@@ -3,76 +3,137 @@ import pandas as pd
 
 from qiskit_optimization import QuadraticProgram
 from qiskit_optimization.algorithms import MinimumEigenOptimizer
-
-# 1. Import QAOA and COBYLA
 from qiskit_algorithms.minimum_eigensolvers import QAOA
 from qiskit_algorithms.optimizers import COBYLA
-
-# 2. Import the NATIVE Qiskit Sampler (Compatible with Qiskit 1.0+)
-# We avoid 'qiskit_aer' here to stop the version conflicts.
 from qiskit.primitives import StatevectorSampler
+
 
 def run_quantum_optimization(
     risk_df: pd.DataFrame,
+    returns_df: pd.DataFrame,
     max_assets: int = 5,
-    risk_factor: float = 0.6
+    risk_factor: float = 0.6,
+    return_factor: float = 0.4
 ):
+    """
+    =================================
+    QUANTUM STOCK SELECTION ENGINE
+    =================================
+
+    ✔ Selects optimal subset of stocks
+    ✔ Penalizes correlation (diversification)
+    ✔ Balances risk vs return
+    ❌ NO weight allocation (done classically)
+    """
+
+    # ----------------------------
+    # 1️⃣ Validation
+    # ----------------------------
     symbols = risk_df["symbol"].tolist()
     n = len(symbols)
 
+    if n < 2:
+        raise ValueError("Quantum optimization requires at least 2 assets")
+
+    max_assets = min(max_assets, n)
+
+    # ----------------------------
+    # 2️⃣ Statistics
+    # ----------------------------
+    mean_returns = returns_df.mean() * 252
+    corr_matrix = returns_df.corr().fillna(0.0)
+
+    # ----------------------------
+    # 3️⃣ QUBO Formulation
+    # ----------------------------
     qp = QuadraticProgram()
 
-    # Binary variables (Buy or Don't Buy)
     for i in range(n):
         qp.binary_var(name=f"x{i}")
 
     confidence_penalty = {
         "HIGH": 0.0,
-        "MEDIUM": 0.2,
-        "LOW": 0.5
+        "MEDIUM": 0.15,
+        "LOW": 0.35
     }
 
     linear = {}
     quadratic = {}
 
-    # Define the "Energy" function (Risk vs Return)
+    # Risk − Return
     for i in range(n):
         cvar = abs(risk_df.loc[i, "cvar_5pct"])
         illiq = risk_df.loc[i, "amihud_illiquidity"]
-        conf = confidence_penalty.get(risk_df.loc[i, "confidence_tier"], 1.0)
+        conf = confidence_penalty.get(
+            risk_df.loc[i, "confidence_tier"], 0.5
+        )
 
-        linear[f"x{i}"] = cvar + illiq + conf
+        linear[f"x{i}"] = (
+            risk_factor * (cvar + illiq + conf)
+            - return_factor * mean_returns.iloc[i]
+        )
 
-        for j in range(n):
-            if i != j:
-                quadratic[(f"x{i}", f"x{j}")] = risk_factor
+    # Diversification penalty
+    for i in range(n):
+        for j in range(i + 1, n):
+            corr = abs(corr_matrix.iloc[i, j])
+            quadratic[(f"x{i}", f"x{j}")] = risk_factor * corr
 
     qp.minimize(linear=linear, quadratic=quadratic)
 
-   # Constraint: Select exactly 'max_assets'
+    # ----------------------------
+    # 4️⃣ Asset Budget Constraint
+    # ----------------------------
     qp.linear_constraint(
         linear={f"x{i}": 1 for i in range(n)},
-        sense="==",  # <--- FIXED (Must be exactly)
+        sense="==",
         rhs=max_assets,
-        name="max_assets"
+        name="asset_budget"
     )
 
-    # 3. Initialize the Native Sampler
-    # This works out-of-the-box with Qiskit Algorithms (both use V2 primitives)
+    # ----------------------------
+    # 5️⃣ QAOA Solve
+    # ----------------------------
     sampler = StatevectorSampler()
-    
-    # 4. Pass 'sampler' (NOT estimator) and the optimizer
-    qaoa = QAOA(sampler=sampler, optimizer=COBYLA(), reps=2)
-    
-    optimizer = MinimumEigenOptimizer(qaoa)
 
+    qaoa = QAOA(
+        sampler=sampler,
+        optimizer=COBYLA(maxiter=50),
+        reps=1
+    )
+
+    optimizer = MinimumEigenOptimizer(qaoa)
     result = optimizer.solve(qp)
 
-    solution = np.array(result.x)
-    selected = [symbols[i] for i in range(n) if solution[i] == 1]
+    solution = np.array(result.x, dtype=int)
 
+    selected_indices = np.where(solution == 1)[0].tolist()
+    selected_assets = [symbols[i] for i in selected_indices]
+
+    # ----------------------------
+    # 6️⃣ Explainability Metadata
+    # ----------------------------
+    avg_corr = (
+        corr_matrix.iloc[selected_indices, selected_indices].values.mean()
+        if len(selected_indices) > 1 else 0.0
+    )
+
+    # ----------------------------
+    # 7️⃣ Return (API-safe)
+    # ----------------------------
     return {
-        "selected_stocks": selected,
-        "binary_solution": solution.tolist(),
-        "num_selected": int(solution.sum())
+        "selected_stocks": selected_assets,
+        "num_selected": int(solution.sum()),
+        "correlation_matrix": corr_matrix
+            .iloc[selected_indices, selected_indices]
+            .round(3)
+            .to_dict(),
+        "quantum_metadata": {
+            "algorithm": "QAOA",
+            "backend": "StatevectorSimulator",
+            "objective": "Risk + Return + Diversification (QUBO)",
+            "risk_factor": risk_factor,
+            "return_factor": return_factor,
+            "diversification_score": round(1 - avg_corr, 3)
+        }
     }

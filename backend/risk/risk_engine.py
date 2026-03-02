@@ -1,32 +1,55 @@
-import sys
 from pathlib import Path
 from datetime import datetime
-
-# --- Add project root to Python path ---
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT))
-
 import pandas as pd
 
-from utils.path_config import PRICE_DATA_DIR
-from cvar import compute_cvar
-from liquidity import compute_amihud_illiquidity
-from drawdown import compute_max_drawdown
+from backend.utils.path_config import PRICE_DATA_DIR
+from backend.risk.cvar import compute_cvar
+from backend.risk.liquidity import compute_amihud_illiquidity
+from backend.risk.drawdown import compute_max_drawdown
 
 
 def compute_daily_returns(df: pd.DataFrame) -> pd.Series:
     return df["Close"].pct_change()
 
 
+# ================= PORTFOLIO RISK (USED BY QUANTUM) =================
+
+def calculate_portfolio_risk(
+    tickers: list[str],
+    weights: dict[str, float]
+) -> dict:
+
+    risk_path = (
+        Path(__file__).resolve().parents[2]
+        / "data" / "processed" / "risk_metrics.csv"
+    )
+
+    risk_df = pd.read_csv(risk_path)
+    risk_df = risk_df[risk_df["symbol"].isin(tickers)]
+
+    if risk_df.empty:
+        raise RuntimeError("Risk metrics not found for selected tickers")
+
+    risk_df["weight"] = risk_df["symbol"].map(weights)
+
+    return {
+        "cvar_5pct": float((risk_df["cvar_5pct"] * risk_df["weight"]).sum()),
+        "illiquidity": float((risk_df["amihud_illiquidity"] * risk_df["weight"]).sum()),
+        "max_drawdown": float((risk_df["max_drawdown"] * risk_df["weight"]).sum()),
+    }
+
+
+# ================= OFFLINE RISK ENGINE =================
+
 def run_risk_engine():
     records = []
 
     price_files = list(PRICE_DATA_DIR.glob("*.csv"))
     if not price_files:
-        raise RuntimeError("No price files found. Run ingestion first.")
+        raise RuntimeError("No price files found")
 
     for file_path in price_files:
-        symbol = file_path.stem.replace("_", ".")
+        symbol = file_path.stem
 
         try:
             df = pd.read_csv(file_path)
@@ -37,38 +60,23 @@ def run_risk_engine():
 
             returns = compute_daily_returns(df)
 
-            cvar_5 = compute_cvar(returns, alpha=0.05)
-            illiq = compute_amihud_illiquidity(df)
-            max_dd = compute_max_drawdown(df["Close"])
-
             records.append({
                 "symbol": symbol,
-                "cvar_5pct": cvar_5,
-                "amihud_illiquidity": illiq,
-                "max_drawdown": max_dd,
-                "last_updated": datetime.today().strftime("%Y-%m-%d")
+                "cvar_5pct": compute_cvar(returns, alpha=0.05),
+                "amihud_illiquidity": compute_amihud_illiquidity(df),
+                "max_drawdown": compute_max_drawdown(df["Close"]),
+                "last_updated": datetime.today().strftime("%Y-%m-%d"),
             })
 
         except Exception as e:
             print(f"Risk calc failed for {symbol}: {e}")
-            records.append({
-                "symbol": symbol,
-                "cvar_5pct": float("nan"),
-                "amihud_illiquidity": float("nan"),
-                "max_drawdown": float("nan"),
-                "last_updated": datetime.today().strftime("%Y-%m-%d")
-            })
 
-    risk_df = pd.DataFrame(records)
+    output_path = (
+        Path(__file__).resolve().parents[2]
+        / "data" / "processed" / "risk_metrics.csv"
+    )
 
-    output_path = PROJECT_ROOT / "data" / "processed" / "risk_metrics.csv"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    risk_df.to_csv(output_path, index=False)
+    pd.DataFrame(records).to_csv(output_path, index=False)
 
-    print("\nRISK ENGINE SUMMARY")
-    print(risk_df)
-    print(f"\nSaved to: {output_path}")
-
-
-if __name__ == "__main__":
-    run_risk_engine()
+    print(f"✅ Risk metrics saved → {output_path}")

@@ -26,5 +26,12 @@ def get_stock_overview(symbol: str):
         "pe_ratio": info.get("trailingPE"),
         "roe": info.get("returnOnEquity"),
         "debt_to_equity": info.get("debtToEquity"),
-        "price_history": price_data
+        "sector": info.get("sector"),
+        "industry": info.get("industry"),
+        
+        "price_history": [
+  { "Date": "...", "Close": 2456.3 },
+  { "Date": "...", "Close": 2471.9 }
+]
+
     }

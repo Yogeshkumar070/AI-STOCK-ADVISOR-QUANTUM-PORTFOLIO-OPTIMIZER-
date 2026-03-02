@@ -1,110 +1,159 @@
-/**
- * Calculates a Rolling RSI Array (Relative Strength Index)
- * Returns an array of objects matching the input data length
+/* * -----------------------------------------------------------------------------
+ * TECHNICAL ANALYSIS ENGINE
+ * Implements Standard Financial Formulas
+ * -----------------------------------------------------------------------------
  */
-export const calculateRSI = (data, period = 14) => {
-  const rsiArray = [];
-  
-  // First, calculate changes
-  const changes = data.map((d, i) => {
-    if (i === 0) return 0;
-    return d.close - data[i - 1].close;
-  });
 
-  // Calculate initial averages
-  let gain = 0;
-  let loss = 0;
-
-  // We can't calculate RSI for the first 'period' days properly
+/**
+ * Simple Moving Average (SMA)
+ */
+export const calculateSMA = (data, windowSize) => {
+  let sma = [];
   for (let i = 0; i < data.length; i++) {
-    if (i < period) {
-      rsiArray.push(null); // Not enough data yet
-      const change = changes[i];
-      if (change > 0) gain += change;
-      else loss -= change;
-      continue;
-    }
-
-    // First calculated RSI
-    if (i === period) {
-      let avgGain = gain / period;
-      let avgLoss = loss / period;
-      let rs = avgGain / avgLoss;
-      rsiArray.push(100 - 100 / (1 + rs));
-    } else {
-      // Smoothed RSI for subsequent days
-      const change = changes[i];
-      let currentGain = change > 0 ? change : 0;
-      let currentLoss = change < 0 ? -change : 0;
-
-      // Previous averages need to be stored/recalculated properly for smoothing
-      // For simplicity in this demo, we use a simple window, 
-      // but in production, use Wilde's Smoothing.
-      
-      // Re-calculating simple window for robustness in demo:
-      let periodGains = 0;
-      let periodLosses = 0;
-      for(let j=i-period+1; j<=i; j++) {
-         const chg = changes[j];
-         if(chg > 0) periodGains += chg;
-         else periodLosses -= chg;
+      if (i < windowSize - 1) {
+          sma.push(null);
+          continue;
       }
-      
-      const avgGain = periodGains / period;
-      const avgLoss = periodLosses / period;
-      
-      if (avgLoss === 0) {
-        rsiArray.push(100);
-      } else {
-        const rs = avgGain / avgLoss;
-        rsiArray.push(100 - 100 / (1 + rs));
+      let sum = 0;
+      for (let j = 0; j < windowSize; j++) {
+          sum += data[i - j].close;
       }
-    }
+      sma.push(sum / windowSize);
   }
-  return rsiArray;
+  return sma;
 };
 
 /**
- * Calculates MACD, Signal, and Histogram arrays
+ * Relative Strength Index (RSI) - Wilder's Smoothing
+ */
+export const calculateRSI = (data, period = 14) => {
+  let rsi = [];
+  let gains = [];
+  let losses = [];
+
+  for (let i = 1; i < data.length; i++) {
+      const change = data[i].close - data[i - 1].close;
+      gains.push(change > 0 ? change : 0);
+      losses.push(change < 0 ? Math.abs(change) : 0);
+  }
+
+  let avgGain = gains.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  let avgLoss = losses.slice(0, period).reduce((a, b) => a + b, 0) / period;
+
+  for (let i = 0; i < period; i++) rsi.push(null);
+  
+  let rs = avgGain / (avgLoss || 1);
+  rsi.push(100 - (100 / (1 + rs)));
+
+  for (let i = period; i < gains.length; i++) {
+      avgGain = ((avgGain * (period - 1)) + gains[i]) / period;
+      avgLoss = ((avgLoss * (period - 1)) + losses[i]) / period;
+      rs = avgGain / (avgLoss || 1);
+      rsi.push(100 - (100 / (1 + rs)));
+  }
+  
+  rsi.unshift(null); // Align length
+  return rsi;
+};
+
+/**
+ * MACD (Moving Average Convergence Divergence)
  */
 export const calculateMACD = (data) => {
-  // Helper for EMA
-  const calcEMA = (values, period) => {
-    const k = 2 / (period + 1);
-    const emaArray = [values[0]];
-    for (let i = 1; i < values.length; i++) {
-      emaArray.push(values[i] * k + emaArray[i - 1] * (1 - k));
-    }
-    return emaArray;
+  const calculateEMA = (values, days) => {
+      const k = 2 / (days + 1);
+      let ema = [values[0]];
+      for (let i = 1; i < values.length; i++) {
+          ema.push(values[i] * k + ema[i - 1] * (1 - k));
+      }
+      return ema;
   };
 
   const closes = data.map(d => d.close);
-  const ema12 = calcEMA(closes, 12);
-  const ema26 = calcEMA(closes, 26);
-
-  const macdLine = ema12.map((val, i) => val - ema26[i]);
-  const signalLine = calcEMA(macdLine, 9);
+  const ema12 = calculateEMA(closes, 12);
+  const ema26 = calculateEMA(closes, 26);
   
-  const histogram = macdLine.map((val, i) => val - signalLine[i]);
+  const macdLine = ema12.map((v, i) => v - ema26[i]);
+  const signalLine = calculateEMA(macdLine, 9);
+  const histogram = macdLine.map((v, i) => v - signalLine[i]);
 
   return { macdLine, signalLine, histogram };
 };
 
 /**
- * Simple Moving Average (SMA)
+ * Bollinger Bands
  */
-export const calculateSMA = (data, period) => {
-  const smaArray = [];
-  for (let i = 0; i < data.length; i++) {
-    if (i < period - 1) {
-      smaArray.push(null);
-      continue;
+export const calculateBollingerBands = (data, period = 20) => {
+    const sma = calculateSMA(data, period);
+    const bands = { upper: [], middle: sma, lower: [] };
+
+    for (let i = 0; i < data.length; i++) {
+        if (i < period - 1) {
+            bands.upper.push(null);
+            bands.lower.push(null);
+            continue;
+        }
+        let sumSqDiff = 0;
+        const mean = sma[i];
+        for (let j = 0; j < period; j++) {
+            const diff = data[i - j].close - mean;
+            sumSqDiff += diff * diff;
+        }
+        const stdDev = Math.sqrt(sumSqDiff / period);
+        bands.upper.push(mean + (2 * stdDev));
+        bands.lower.push(mean - (2 * stdDev));
     }
+    return bands;
+};
+
+/**
+ * Average True Range (ATR)
+ */
+export const calculateATR = (data, period = 14) => {
+    let atr = [];
+    let trValues = [];
+
+    for (let i = 0; i < data.length; i++) {
+        if (i === 0) {
+            trValues.push(data[i].high - data[i].low);
+            continue;
+        }
+        const high = data[i].high;
+        const low = data[i].low;
+        const prevClose = data[i - 1].close;
+        const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+        trValues.push(tr);
+    }
+
     let sum = 0;
-    for (let j = 0; j < period; j++) {
-      sum += data[i - j].close;
+    for(let i=0; i<period; i++) { sum += trValues[i]; atr.push(null); }
+    
+    let prevATR = sum / period;
+    atr.push(prevATR);
+
+    for(let i=period + 1; i<data.length; i++) {
+        const currentATR = ((prevATR * (period - 1)) + trValues[i]) / period;
+        atr.push(currentATR);
+        prevATR = currentATR;
     }
-    smaArray.push(sum / period);
-  }
-  return smaArray;
+    while(atr.length < data.length) atr.unshift(null); 
+    return atr.slice(0, data.length);
+};
+
+/**
+ * Rate of Change (ROC)
+ */
+export const calculateROC = (data, period = 12) => {
+    let roc = [];
+    for (let i = 0; i < data.length; i++) {
+        if (i < period) {
+            roc.push(null);
+            continue;
+        }
+        const currentPrice = data[i].close;
+        const pastPrice = data[i - period].close;
+        const rocVal = ((currentPrice - pastPrice) / pastPrice) * 100;
+        roc.push(rocVal);
+    }
+    return roc;
 };

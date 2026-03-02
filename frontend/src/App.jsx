@@ -15,6 +15,7 @@ export default function App() {
       <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
 
       <main className="max-w-7xl mx-auto px-8 pt-24 pb-12">
+        {/* No props needed! They all read from StockContext now */}
         {activeTab === "Overview" && <Overview />}
         {activeTab === "Fundamentals" && <Fundamentals />}
         {activeTab === "Technicals" && <Technicals />}

@@ -1,24 +1,36 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
-import numpy as np
+from fastapi.middleware.cors import CORSMiddleware
 
-from portfolio.quantum.run_quantum import run_quantum_optimization
+# Import Routers
+from backend.routers.quantum import router as quantum_router
+from backend.risk.api import router as risk_router
+from backend.routers.stocks import router as stocks_router
 
-app = FastAPI(title="Quantum Portfolio Backend")
+app = FastAPI(title="FinNet Backend")
+
+# CORS Setup
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- REGISTER ROUTERS ---
+
+# Quantum Router already has prefix="/quantum" inside quantum.py, so we don't add it here
+app.include_router(quantum_router)
+
+# Risk Router has prefix="/risk" inside api.py, so we don't add it here
+app.include_router(risk_router)
+
+# Stocks Router DOES NOT have a prefix in stocks.py, so we MUST ADD IT HERE
+app.include_router(stocks_router, prefix="/stock", tags=["Stocks"]) 
+
+@app.get("/")
+def health_check():
+    return {"status": "FinNet Backend Running"}
 
 
-class PortfolioRequest(BaseModel):
-    stocks: list[str]
-    expected_returns: list[float]
-    covariance_matrix: list[list[float]]
-
-
-@app.post("/quantum/optimize")
-def optimize_portfolio(data: PortfolioRequest):
-    result = run_quantum_optimization(
-        stocks=data.stocks,
-        expected_returns=np.array(data.expected_returns),
-        covariance_matrix=np.array(data.covariance_matrix)
-    )
-
-    return result
+    
