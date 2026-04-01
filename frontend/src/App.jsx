@@ -6,6 +6,7 @@ import Fundamentals from "./pages/Fundamentals";
 import Technicals from "./pages/Technicals";
 import Prediction from "./pages/Prediction";
 import Quantum from "./pages/Quantum";
+import AIAdvisor from "./pages/AIAdvisor";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("Overview");
@@ -21,6 +22,7 @@ export default function App() {
         {activeTab === "Technicals" && <Technicals />}
         {activeTab === "Prediction" && <Prediction />}
         {activeTab === "Quantum" && <Quantum />}
+        {activeTab === "AI Advisor" && <AIAdvisor />}
       </main>
     </div>
   );

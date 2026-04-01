@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from "react";
 import {
   LayoutDashboard, Activity, LineChart, TrendingUp, BrainCircuit,
-  Cpu, Clock
+  Cpu, Clock, Sparkles
 } from "lucide-react";
 import TickerBar from "./TickerBar";
 
@@ -14,6 +14,7 @@ const TABS = [
   { id: "Technicals",   icon: LineChart       },
   { id: "Prediction",   icon: TrendingUp      },
   { id: "Quantum",      icon: BrainCircuit    },
+  { id: "AI Advisor",   icon: Sparkles        },
 ];
 
 /* --- Real-Time NSE Market Status Logic (IST) --- */
