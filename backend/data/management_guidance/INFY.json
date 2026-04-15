@@ -1,0 +1,39 @@
+{
+  "company": "Infosys",
+  "symbol": "INFY",
+  "history": [
+    {
+      "quarter": "Q4 FY24",
+      "statement": "Client spending should stabilize and support better growth visibility in the following quarter.",
+      "metric": "revenue_growth_pct",
+      "direction": "increase",
+      "target_text": "Improving growth visibility",
+      "actual_value": 3.1,
+      "actual_text": "Growth stabilized but remained softer than a full re-acceleration.",
+      "delivered": null,
+      "source": "local seed dataset"
+    },
+    {
+      "quarter": "Q1 FY25",
+      "statement": "Margins should benefit from utilization improvement in the next quarter.",
+      "metric": "margin_delta_pct",
+      "direction": "improve",
+      "target_text": "Margin improvement",
+      "actual_value": 0.5,
+      "actual_text": "Margins improved modestly as utilization trends strengthened.",
+      "delivered": true,
+      "source": "local seed dataset"
+    },
+    {
+      "quarter": "Q2 FY25",
+      "statement": "Discretionary demand should recover more broadly by the next update.",
+      "metric": "discretionary_demand",
+      "direction": "increase",
+      "target_text": "Broad discretionary recovery",
+      "actual_value": -1.0,
+      "actual_text": "Recovery remained patchy and did not broaden materially.",
+      "delivered": false,
+      "source": "local seed dataset"
+    }
+  ]
+}

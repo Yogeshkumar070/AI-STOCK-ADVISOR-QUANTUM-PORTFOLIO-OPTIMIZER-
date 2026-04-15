@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from "react";
 import {
   LayoutDashboard, Activity, LineChart, TrendingUp, BrainCircuit,
-  Cpu, Clock, Sparkles
+  Cpu, Clock
 } from "lucide-react";
 import TickerBar from "./TickerBar";
 
@@ -14,7 +14,6 @@ const TABS = [
   { id: "Technicals",   icon: LineChart       },
   { id: "Prediction",   icon: TrendingUp      },
   { id: "Quantum",      icon: BrainCircuit    },
-  { id: "AI Advisor",   icon: Sparkles        },
 ];
 
 /* --- Real-Time NSE Market Status Logic (IST) --- */
@@ -54,7 +53,7 @@ const getMarketStatus = () => {
   }
 };
 
-export default function Navbar({ activeTab, setActiveTab, selectedStock, onTickerClick }) {
+export default function Navbar({ activeTab, setActiveTab, onTickerClick }) {
   const [marketStatus, setMarketStatus] = useState(getMarketStatus());
 
   // Update market status every 60 seconds
@@ -117,8 +116,8 @@ export default function Navbar({ activeTab, setActiveTab, selectedStock, onTicke
               })}
             </nav>
 
-            {/* RIGHT — Dynamic Market Pill + Ticker Status */}
-            <div className="flex items-center gap-5 flex-shrink-0">
+            {/* RIGHT — Dynamic Market Pill */}
+            <div className="flex items-center flex-shrink-0">
               
               {/* Dynamic Market Status Indicator */}
               <div className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border shadow-sm ${marketStatus.bg} ${marketStatus.border}`}>
@@ -133,20 +132,6 @@ export default function Navbar({ activeTab, setActiveTab, selectedStock, onTicke
                 <span className={`text-[10px] font-black tracking-widest uppercase ${marketStatus.color}`}>
                   {marketStatus.text}
                 </span>
-              </div>
-
-              {/* Active Ticker Widget */}
-              <div className="flex flex-col items-end border-l border-slate-200 pl-5">
-                <span className="text-[9px] font-black text-slate-400 tracking-[0.2em] uppercase mb-0.5">Active Asset</span>
-                {selectedStock ? (
-                  <span className="font-mono text-[15px] font-black text-slate-900 tracking-wider bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-                    {selectedStock}
-                  </span>
-                ) : (
-                  <span className="text-[14px] font-bold text-slate-400">
-                    None Selected
-                  </span>
-                )}
               </div>
 
             </div>

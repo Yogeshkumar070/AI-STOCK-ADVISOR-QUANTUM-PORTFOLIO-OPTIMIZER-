@@ -1,11 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════════════
    Fundamentals.jsx — FinNet Institutional · Quantitative Factor Analysis
    ═══════════════════════════════════════════════════════════════════════ */
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useStock } from "../context/StockContext";
 import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip as RechartsTooltip,
-  ComposedChart, Area, Line, Bar, XAxis, YAxis, CartesianGrid
+  ComposedChart, Area, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from "recharts";
 import {
   Activity, Scale, Layers, CircleDollarSign, 
@@ -110,6 +110,48 @@ function PillarCard({ title, score, icon, accent, items }) {
    ═══════════════════════════════════════════════════════════════════════ */
 export default function Fundamentals() {
   const { symbol, stockData, priceData, loading } = useStock();
+  const [mcsData, setMcsData] = useState(null);
+  const [mcsLoading, setMcsLoading] = useState(false);
+  const API_BASE = "http://localhost:8000";
+
+  useEffect(() => {
+    if (!symbol) {
+      setMcsData(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchMcs = async () => {
+      setMcsLoading(true);
+      try {
+        const response = await fetch(`${API_BASE}/stock/fundamentals/mcs/${symbol}`);
+        if (!response.ok) {
+          throw new Error(`MCS request failed with status ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (!cancelled) {
+          setMcsData(data);
+        }
+      } catch (error) {
+        console.error("MCS Error", error);
+        if (!cancelled) {
+          setMcsData(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setMcsLoading(false);
+        }
+      }
+    };
+
+    fetchMcs();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol]);
 
   // 1. Generate Advanced Data & Chart Logic
   const intel = useMemo(() => {
@@ -205,6 +247,52 @@ export default function Fundamentals() {
     ];
   }, [intel]);
 
+  const revenueAuditData = useMemo(() => {
+    if (mcsData?.chart_series?.revenue?.length) return mcsData.chart_series.revenue;
+    return [
+      { year: "2021", promised: 50, actual: 30, aiAdjusted: null, metric: "Revenue" },
+      { year: "2022", promised: 40, actual: 20, aiAdjusted: null, metric: "Revenue" },
+      { year: "2023", promised: 35, actual: 35, aiAdjusted: null, metric: "Revenue" },
+      { year: "2024", promised: 60, actual: 15, aiAdjusted: null, metric: "Revenue" },
+      { year: "2025", promised: 25, actual: 28, aiAdjusted: null, metric: "Revenue" },
+      { year: "2027 (Proj)", promised: 45, actual: null, aiAdjusted: 26.4, metric: "Prediction" },
+    ];
+  }, [mcsData]);
+
+  const profitAuditData = useMemo(() => {
+    if (mcsData?.chart_series?.profit?.length) return mcsData.chart_series.profit;
+    return [
+      { year: "2021", promised: 22, actual: 18, aiAdjusted: null, metric: "Profit" },
+      { year: "2022", promised: 18, actual: 12, aiAdjusted: null, metric: "Profit" },
+      { year: "2023", promised: 25, actual: 27, aiAdjusted: null, metric: "Profit" },
+      { year: "2024", promised: 30, actual: 16, aiAdjusted: null, metric: "Profit" },
+      { year: "2025", promised: 24, actual: 21, aiAdjusted: null, metric: "Profit" },
+      { year: "2027 (Proj)", promised: 26, actual: null, aiAdjusted: 15.3, metric: "Prediction" },
+    ];
+  }, [mcsData]);
+
+  const revenueProjection = mcsData?.projection?.revenue;
+  const profitProjection = mcsData?.projection?.profit;
+  const auditLedger = useMemo(() => {
+    if (mcsData?.annual_audits) {
+      const revenue = mcsData.annual_audits.revenue || mcsData.annual_audits.Revenue || [];
+      const profit = mcsData.annual_audits.profit || mcsData.annual_audits.Profit || [];
+      const combined = [...revenue, ...profit];
+      if (combined.length) {
+        return combined
+          .sort((a, b) => Number(a.year) - Number(b.year) || String(a.category).localeCompare(String(b.category)))
+          .slice(-10);
+      }
+    }
+    return [
+      { year: "2021", promised: 50, actual: 30, category: "Revenue" },
+      { year: "2022", promised: 40, actual: 20, category: "Revenue" },
+      { year: "2023", promised: 35, actual: 35, category: "Profit" },
+      { year: "2024", promised: 60, actual: 15, category: "Profit" },
+      { year: "2025", promised: 25, actual: 28, category: "Revenue" },
+    ];
+  }, [mcsData]);
+
   // ── EMPTY STATE ──
   if (!stockData && !loading) {
     return (
@@ -287,9 +375,9 @@ export default function Fundamentals() {
 
           {/* Radar Chart (Factor Breakdown) */}
           <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-8 flex flex-col sm:flex-row items-center">
-            <div className="w-full sm:w-1/2 h-[300px]">
+            <div className="w-full sm:w-1/2 h-[300px] shrink-0">
               <ResponsiveContainer width="100%" height="100%">
-                <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
+                <RadarChart cx="50%" cy="50%" outerRadius="65%" data={radarData}>
                   <PolarGrid stroke="#e2e8f0" strokeWidth={1.5} />
                   <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 11, fontWeight: 800, textAnchor: 'middle' }} />
                   <Radar name="Score" dataKey="A" stroke="#2563eb" strokeWidth={3} fill="url(#radarGrad)" fillOpacity={0.6} />
@@ -303,13 +391,14 @@ export default function Fundamentals() {
                 </RadarChart>
               </ResponsiveContainer>
             </div>
-            <div className="w-full sm:w-1/2 sm:pl-10 mt-8 sm:mt-0 space-y-5">
+            
+            <div className="w-full sm:w-1/2 sm:pl-10 mt-8 sm:mt-0 space-y-5 min-w-0">
               <h3 className="text-xl font-black text-slate-900 tracking-tight border-b border-slate-100 pb-3">Factor Breakdown</h3>
               <div className="space-y-4">
                 {radarData.map((d, i) => (
                   <div key={i} className="flex items-center justify-between">
-                    <span className="text-[13px] font-bold text-slate-600 uppercase tracking-widest">{d.subject}</span>
-                    <div className="flex items-center gap-4 w-1/2">
+                    <span className="text-[13px] font-bold text-slate-600 uppercase tracking-widest truncate mr-2">{d.subject}</span>
+                    <div className="flex items-center gap-4 w-1/2 shrink-0">
                       <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden shadow-inner">
                         <div className={`h-full rounded-full ${d.A >= 70 ? 'bg-emerald-500' : d.A >= 40 ? 'bg-blue-500' : 'bg-rose-500'}`} style={{ width: `${d.A}%` }}></div>
                       </div>
@@ -323,119 +412,288 @@ export default function Fundamentals() {
         </div>
 
         {/* ── THE MEGA CHART: FUNDAMENTAL CONVERGENCE ── */}
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-[0_12px_40px_rgb(0,0,0,0.06)] overflow-hidden mt-8">
-          
-          {/* Header & Custom Legend */}
-          <div className="p-8 border-b border-slate-100 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 bg-slate-50/50">
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.06)] overflow-hidden mt-8">
+
+          {/* ── NAVY HEADER ── */}
+          <div className="bg-[#1e3a5f] px-8 py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                <BookOpenCheck size={24} className="text-blue-600" />
+              <h2 className="text-lg font-black text-white tracking-tight flex items-center gap-2.5">
+                <BookOpenCheck size={20} className="text-blue-300" />
                 Fundamental Convergence Engine
               </h2>
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">
-                Asset Price vs. Volume, Earnings, SMA & Dividends
+              <p className="text-[10px] font-bold text-blue-300/80 uppercase tracking-[0.18em] mt-1">
+                Asset Price · Earnings · Dividends · SMA-50 · Fair Value · Volume
               </p>
             </div>
-            
-            {/* The Ultimate Interactive Legend */}
-            <div className="flex flex-wrap items-center gap-3 md:gap-5 bg-white px-5 py-3 rounded-2xl border border-slate-200 shadow-sm">
-              <span className="flex items-center gap-2 text-[10px] font-black text-slate-700 uppercase tracking-wider">
-                <div className={`w-3 h-3 rounded-full ${intel.isUp ? 'bg-emerald-500' : 'bg-blue-500'}`}></div> Price (R)
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="bg-white/10 text-blue-200 text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border border-white/20">
+                Sector: {stockData.sector || "Equities"}
               </span>
-              <span className="flex items-center gap-2 text-[10px] font-black text-slate-700 uppercase tracking-wider">
-                <div className="w-3 h-0.5 bg-slate-400"></div> SMA 50 (R)
-              </span>
-              <span className="flex items-center gap-2 text-[10px] font-black text-slate-700 uppercase tracking-wider">
-                <div className="w-4 h-1 bg-amber-500"></div> Fair Value (R)
-              </span>
-              <span className="flex items-center gap-2 text-[10px] font-black text-slate-700 uppercase tracking-wider">
-                <div className="w-2 h-2 rounded-full bg-purple-500"></div> Earnings (L)
-              </span>
-              <span className="flex items-center gap-2 text-[10px] font-black text-slate-700 uppercase tracking-wider">
-                <div className="w-2 h-2 rounded-full border-[2px] border-emerald-500"></div> Dividends (L)
-              </span>
-              <span className="flex items-center gap-2 text-[10px] font-black text-slate-700 uppercase tracking-wider">
-                <div className="w-3 h-3 bg-slate-300"></div> Volume
+              <span className="bg-emerald-500/20 text-emerald-300 text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border border-emerald-500/30">
+                ● Live Data
               </span>
             </div>
           </div>
 
-          {/* MASSIVE 650px Chart Area */}
-          <div className="p-6">
-            <div style={{ width: '100%', height: 650 }}>
+          {/* ── KPI STRIP ── */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 border-b border-slate-100 divide-x divide-slate-100">
+            {[
+              {
+                label: "Current Price",
+                value: `₹${fmtNum(intel.valChartData[intel.valChartData.length - 1]?.Price || 0, 0)}`,
+                sub: intel.isUp ? "▲ Uptrend" : "▼ Downtrend",
+                subColor: intel.isUp ? "text-emerald-600" : "text-rose-500",
+                valueColor: "text-[#1e3a5f]",
+              },
+              {
+                label: "Fair Value (Est)",
+                value: `₹${fmtNum(intel.valChartData[intel.valChartData.length - 1]?.["Fair Value"] || 0, 0)}`,
+                sub: "Estimated intrinsic",
+                subColor: "text-amber-600",
+                valueColor: "text-amber-700",
+              },
+              {
+                label: "EPS (TTM)",
+                value: `₹${fmtNum(intel.metrics.eps, 1)}`,
+                sub: "Stepped quarterly",
+                subColor: "text-violet-500",
+                valueColor: "text-violet-700",
+              },
+              {
+                label: "Dividend Yield",
+                value: fmtPct(intel.metrics.div),
+                sub: "Annual rate",
+                subColor: "text-slate-400",
+                valueColor: "text-emerald-700",
+              },
+            ].map((kpi, i) => (
+              <div key={i} className="px-6 py-4">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.14em] mb-1.5">{kpi.label}</p>
+                <p className={`text-2xl font-black ${kpi.valueColor}`}>{kpi.value}</p>
+                <p className={`text-[10px] font-bold mt-1 ${kpi.subColor}`}>{kpi.sub}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* ── LEGEND BAR ── */}
+          <div className="bg-slate-50 border-b border-slate-100 px-6 py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
+            {[
+              {
+                icon: <div className="w-5 h-[3px] rounded bg-[#1e3a5f]" />,
+                label: "Price", axis: "Right ₹",
+                axisStyle: "bg-blue-50 text-blue-700 border-blue-200",
+              },
+              {
+                icon: (
+                  <svg width="22" height="4"><line x1="0" y1="2" x2="22" y2="2" stroke="#94a3b8" strokeWidth="2" strokeDasharray="5 3" /></svg>
+                ),
+                label: "SMA 50", axis: "Right ₹",
+                axisStyle: "bg-slate-100 text-slate-500 border-slate-200",
+              },
+              {
+                icon: (
+                  <svg width="22" height="4"><line x1="0" y1="2" x2="22" y2="2" stroke="#d97706" strokeWidth="2" strokeDasharray="7 4" /></svg>
+                ),
+                label: "Fair Value", axis: "Right ₹",
+                axisStyle: "bg-amber-50 text-amber-700 border-amber-200",
+              },
+              {
+                icon: <div className="w-2.5 h-2.5 rounded-full bg-violet-600" />,
+                label: "Earnings", axis: "Left ₹",
+                axisStyle: "bg-violet-50 text-violet-700 border-violet-200",
+              },
+              {
+                icon: <div className="w-2.5 h-2.5 rounded-full border-2 border-emerald-600 bg-white" />,
+                label: "Dividends", axis: "Left ₹",
+                axisStyle: "bg-emerald-50 text-emerald-700 border-emerald-200",
+              },
+              {
+                icon: <div className="w-2.5 h-2.5 rounded-sm bg-slate-300" />,
+                label: "Volume", axis: null,
+                axisStyle: "",
+              },
+            ].map((item, i) => (
+              <div key={i} className="flex items-center gap-2">
+                {item.icon}
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">{item.label}</span>
+                {item.axis && (
+                  <span className={`text-[8px] font-black px-2 py-0.5 rounded-full border uppercase tracking-wider ${item.axisStyle}`}>
+                    {item.axis}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* ── AXIS LABELS ROW ── */}
+          <div className="flex items-center justify-between px-7 pt-4 pb-1">
+            <span className="text-[9px] font-black text-violet-600 uppercase tracking-[0.14em]">
+              ← Earnings & Dividends (₹)
+            </span>
+            <span className="text-[9px] font-black text-[#1e3a5f] uppercase tracking-[0.14em]">
+              Price & Fair Value (₹) →
+            </span>
+          </div>
+
+          {/* ── SINGLE UNIFIED CHART ── */}
+          <div className="px-4 pb-6">
+            <div style={{ width: "100%", height: 520 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={intel.valChartData} margin={{ top: 20, right: 10, left: 10, bottom: 0 }}>
+                <ComposedChart
+                  data={intel.valChartData}
+                  margin={{ top: 10, right: 60, left: 60, bottom: 10 }}
+                >
                   <defs>
-                    <linearGradient id="megaPriceGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={intel.isUp ? "#10b981" : "#3b82f6"} stopOpacity={0.25}/>
-                      <stop offset="95%" stopColor={intel.isUp ? "#10b981" : "#3b82f6"} stopOpacity={0}/>
+                    <linearGradient id="priceAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#1e3a5f" stopOpacity={0.1} />
+                      <stop offset="100%" stopColor="#1e3a5f" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  
-                  {/* Clean Grid */}
-                  <CartesianGrid strokeDasharray="3 3" vertical={true} horizontal={true} stroke="#e2e8f0" />
-                  
-                  <XAxis dataKey="date" tick={{fontSize: 10, fill: '#64748b', fontWeight: 800}} axisLine={{stroke: '#cbd5e1'}} tickLine={false} minTickGap={40} dy={10} />
-                  
-                  {/* Left Axis: Fundamentals (Earnings & Dividends) */}
-                  <YAxis yAxisId="left" orientation="left" tick={{fontSize: 10, fill: '#8b5cf6', fontWeight: 800}} axisLine={false} tickLine={false} tickFormatter={(v)=>`₹${v.toFixed(1)}`} width={50} />
-                  
-                  {/* Right Axis: Price & Fair Value */}
-                  <YAxis yAxisId="right" orientation="right" domain={['auto', 'auto']} tick={{fontSize: 10, fill: '#2563eb', fontWeight: 800}} axisLine={false} tickLine={false} tickFormatter={(v)=>`₹${v.toFixed(0)}`} width={50} />
-                  
-                  {/* Hidden Bottom Axis: Volume - Setting domain extremely high forces the bars to the bottom 12.5% */}
-                  <YAxis yAxisId="vol" hide domain={[0, 'dataMax * 8']} />
 
-                  {/* Dark Mode Institutional Tooltip */}
-                  <RechartsTooltip 
-                    contentStyle={{borderRadius: '16px', border: '1px solid #1e293b', boxShadow: '0 20px 40px -10px rgb(0 0 0 / 0.4)', backgroundColor: '#0f172a', color: '#f8fafc'}}
-                    itemStyle={{fontWeight: '900', color: '#f8fafc'}}
-                    labelStyle={{color: '#94a3b8', marginBottom: '8px', borderBottom: '1px solid #334155', paddingBottom: '6px', fontWeight: 'bold'}}
-                    formatter={(value) => [`₹${Number(value).toLocaleString(undefined, {maximumFractionDigits: 1})}`]}
+                  <CartesianGrid strokeDasharray="3 4" stroke="#e2e8f0" vertical={false} />
+
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
+                    axisLine={{ stroke: "#e2e8f0" }}
+                    tickLine={false}
+                    minTickGap={50}
+                    dy={8}
                   />
-                  
-                  {/* 1. Volume (Bottom background bars) */}
-                  <Bar yAxisId="vol" dataKey="Volume" fill="#cbd5e1" barSize={3} opacity={0.5} />
 
-                  {/* 2. SMA 50 (Smooth reference line) */}
-                  <Line yAxisId="right" type="monotone" dataKey="SMA 50" stroke="#94a3b8" strokeWidth={1.5} dot={false} activeDot={false} />
-                  
-                  {/* 3. Fair Value (Dashed Amber Line) */}
-                  <Line yAxisId="right" type="monotone" dataKey="Fair Value" stroke="#f59e0b" strokeWidth={2.5} strokeDasharray="5 5" dot={false} activeDot={{r: 6, fill: '#f59e0b', strokeWidth: 0}} />
+                  {/* Left axis — Earnings & Dividends */}
+                  <YAxis
+                    yAxisId="left"
+                    orientation="left"
+                    tick={{ fontSize: 10, fill: "#7c3aed", fontWeight: 800 }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(v) => `₹${v.toFixed(0)}`}
+                    width={54}
+                  />
 
-                  {/* 4. Price (Beautiful Gradient Area) */}
-                  <Area yAxisId="right" type="monotone" dataKey="Price" stroke={intel.isUp ? "#10b981" : "#3b82f6"} strokeWidth={2.5} fill="url(#megaPriceGrad)" activeDot={{r: 6, strokeWidth: 0}} />
-                  
-                  {/* 5. Earnings (Stepped Purple Line with Solid Dots) */}
-                  <Line yAxisId="left" type="stepAfter" dataKey="Earnings" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3.5, fill: '#8b5cf6', strokeWidth: 0 }} activeDot={{r: 6, fill: '#8b5cf6', strokeWidth: 0}} />
-                  
-                  {/* 6. Dividends (Dotted Emerald Line with Hollow Dots) */}
-                  <Line yAxisId="left" type="stepAfter" dataKey="Dividends" stroke="#10b981" strokeWidth={1.5} strokeDasharray="3 3" dot={{ r: 4, fill: '#fff', stroke: '#10b981', strokeWidth: 2 }} activeDot={{r: 6}} />
-                
+                  {/* Right axis — Price & Fair Value */}
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    domain={["auto", "auto"]}
+                    tick={{ fontSize: 10, fill: "#1e3a5f", fontWeight: 800 }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(v) => `₹${v.toFixed(0)}`}
+                    width={58}
+                  />
+
+                  {/* Volume hidden axis — bottom 15% of right axis range */}
+                  <YAxis yAxisId="vol" hide domain={[0, "dataMax * 7"]} />
+
+                  <RechartsTooltip
+                    contentStyle={{
+                      borderRadius: "12px",
+                      border: "1px solid #e2e8f0",
+                      backgroundColor: "#1e293b",
+                      color: "#f8fafc",
+                      boxShadow: "0 20px 40px -10px rgba(0,0,0,0.3)",
+                      padding: "12px 16px",
+                    }}
+                    itemStyle={{ fontWeight: 800, fontSize: 12 }}
+                    labelStyle={{ color: "#94a3b8", fontSize: 11, fontWeight: 700, marginBottom: 8, borderBottom: "1px solid #334155", paddingBottom: 6 }}
+                    formatter={(value, name) => {
+                      if (name === "Volume") return [`${(Number(value) / 1000).toFixed(0)}K shares`, name];
+                      return [`₹${Number(value).toLocaleString("en-IN", { maximumFractionDigits: 1 })}`, name];
+                    }}
+                  />
+
+                  {/* 1. Volume — bottom background bars */}
+                  <Bar
+                    yAxisId="vol"
+                    dataKey="Volume"
+                    fill="#cbd5e1"
+                    opacity={0.5}
+                    maxBarSize={4}
+                    radius={[1, 1, 0, 0]}
+                  />
+
+                  {/* 2. SMA 50 — slate dashed */}
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="SMA 50"
+                    stroke="#94a3b8"
+                    strokeWidth={1.5}
+                    strokeDasharray="5 4"
+                    dot={false}
+                    activeDot={false}
+                  />
+
+                  {/* 3. Fair Value — amber long-dash */}
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="Fair Value"
+                    stroke="#d97706"
+                    strokeWidth={2}
+                    strokeDasharray="8 5"
+                    dot={false}
+                    activeDot={{ r: 5, fill: "#d97706", strokeWidth: 0 }}
+                  />
+
+                  {/* 4. Price — navy area */}
+                  <Area
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="Price"
+                    stroke="#1e3a5f"
+                    strokeWidth={2.5}
+                    fill="url(#priceAreaGrad)"
+                    activeDot={{ r: 5, fill: "#1e3a5f", strokeWidth: 0 }}
+                  />
+
+                  {/* 5. Earnings — violet stepped with solid dots */}
+                  <Line
+                    yAxisId="left"
+                    type="stepAfter"
+                    dataKey="Earnings"
+                    stroke="#7c3aed"
+                    strokeWidth={2}
+                    dot={{ r: 3.5, fill: "#7c3aed", stroke: "#fff", strokeWidth: 1.5 }}
+                    activeDot={{ r: 5, fill: "#7c3aed", strokeWidth: 0 }}
+                  />
+
+                  {/* 6. Dividends — emerald dotted stepped hollow */}
+                  <Line
+                    yAxisId="left"
+                    type="stepAfter"
+                    dataKey="Dividends"
+                    stroke="#059669"
+                    strokeWidth={1.5}
+                    strokeDasharray="3 3"
+                    dot={{ r: 4, fill: "#fff", stroke: "#059669", strokeWidth: 2 }}
+                    activeDot={{ r: 5 }}
+                  />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
+          </div>
 
-            {/* The Institutional Quote Box (Safely Below Chart) */}
-            <div className="mt-8 bg-gradient-to-r from-amber-50 to-orange-50/30 border border-amber-200 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row gap-6 items-start shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-48 h-48 bg-amber-400/10 rounded-full blur-[40px] pointer-events-none"></div>
-              
-              <div className="bg-amber-100 p-3 rounded-xl text-amber-600 shrink-0">
-                <Quote size={28} />
-              </div>
-              
-              <div className="relative z-10">
-                <p className="font-serif text-slate-800 text-lg md:text-xl leading-relaxed italic pr-4">
-                  "Earnings and dividends represent the ultimate gravity of a stock. When the primary price area dips below the projected fair value and the underlying earnings trajectory, the asset is historically undervalued relative to its structural growth power."
+          {/* ── PETER LYNCH QUOTE ── */}
+          <div className="border-t border-slate-100 bg-amber-50/60 px-8 py-6 flex gap-4 items-start">
+            <div className="bg-amber-100 border border-amber-200 rounded-xl p-3 text-amber-700 shrink-0">
+              <Quote size={20} />
+            </div>
+            <div>
+              <p className="font-serif text-slate-700 text-[15px] leading-relaxed italic">
+                "Earnings and dividends represent the ultimate gravity of a stock. When the primary price area dips below the projected fair value and the underlying earnings trajectory, the asset is historically undervalued relative to its structural growth power."
+              </p>
+              <div className="flex items-center gap-3 mt-3">
+                <div className="h-px w-6 bg-amber-400"></div>
+                <p className="text-[9px] font-black text-amber-700/70 uppercase tracking-[0.2em]">
+                  Institutional Note · Peter Lynch Framework
                 </p>
-                <div className="flex items-center gap-3 mt-4">
-                  <div className="h-px w-8 bg-amber-300"></div>
-                  <p className="text-[11px] font-black text-amber-700/80 uppercase tracking-[0.2em]">Institutional Note • Peter Lynch Framework</p>
-                </div>
               </div>
             </div>
-
           </div>
+
         </div>
 
         {/* ── AI SYNTHESIS ── */}
@@ -463,7 +721,7 @@ export default function Fundamentals() {
           </div>
         </div>
 
-        {/* ── THE 4 PILLARS (DEEP DIVE GRID) ── */}
+        {/* ── QUANTITATIVE DRILL-DOWN ── */}
         <h2 className="text-2xl font-black text-slate-900 pt-6 tracking-tight flex items-center gap-3 border-b border-slate-200 pb-4">
           Quantitative Drill-Down
         </h2>
@@ -522,6 +780,133 @@ export default function Fundamentals() {
             ]}
           />
 
+        </div>
+
+        {/* ── AI AUDITOR: MANAGEMENT CREDIBILITY SIMULATOR ── */}
+        <div className="bg-[#161b22] rounded-3xl p-8 shadow-2xl border border-slate-800 mt-8 relative overflow-hidden">
+          <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end border-b border-slate-700/50 pb-6 mb-8 gap-6">
+            <div>
+              <h2 className="text-2xl font-black text-white tracking-tight">Management Credibility Simulator</h2>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400 mt-1">
+                Revenue and profit promises vs annual reported delivery
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Trust Index (MCS)</p>
+                <p className="text-3xl font-black text-white">{mcsData?.mcs_score ? fmtNum(mcsData.mcs_score) : "58.8"}%</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  {revenueProjection?.target_year || "2027"} Revenue Proj
+                </p>
+                <p className="text-3xl font-black text-slate-300">{revenueProjection?.base_projection ? fmtNum(revenueProjection.base_projection) : "45.0"}%</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">
+                  {profitProjection?.target_year || "2027"} Profit AI Adj
+                </p>
+                <p className="text-3xl font-black text-emerald-400">
+                  {profitProjection?.ai_adjusted ? fmtNum(profitProjection.ai_adjusted) : "15.3"}%
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {mcsLoading ? (
+            <div className="h-[420px] flex items-center justify-center">
+              <p className="text-slate-500 animate-pulse font-bold tracking-widest uppercase">Auditing historical transcripts...</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-8">
+              <div className="flex flex-wrap items-center gap-6">
+                <span className="flex items-center gap-2 text-xs font-bold text-slate-300 uppercase">
+                  <div className="w-4 h-4 rounded bg-[#64748b]"></div> Promised
+                </span>
+                <span className="flex items-center gap-2 text-xs font-bold text-slate-300 uppercase">
+                  <div className="w-4 h-4 rounded bg-[#3b82f6]"></div> Actual
+                </span>
+                <span className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase">
+                  <div className="w-4 h-4 rounded bg-[#10b981]"></div> AI Adjusted
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                <div className="bg-[#0f1720] rounded-3xl border border-slate-800 p-6">
+                  <p className="text-sm font-black text-white mb-1">Revenue Growth Audit</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-4">Past 5 years + forward projection</p>
+                  <div className="h-[320px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={revenueAuditData} margin={{ top: 20, right: 0, left: -20, bottom: 0 }} barGap={4}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
+                        <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 12, fontWeight: 700 }} axisLine={{ stroke: "#475569" }} tickLine={false} dy={10} />
+                        <YAxis tick={{ fill: "#94a3b8", fontSize: 12, fontWeight: 700 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                        <RechartsTooltip
+                          cursor={{ fill: "#1e293b", opacity: 0.4 }}
+                          contentStyle={{ backgroundColor: "#0f172a", borderColor: "#334155", borderRadius: "12px", color: "#f8fafc" }}
+                          itemStyle={{ fontWeight: "bold" }}
+                          formatter={(value) => value === null || value === undefined ? "—" : `${Number(value).toFixed(1)}%`}
+                        />
+                        <Bar dataKey="promised" name="Promised (%)" fill="#64748b" radius={[4, 4, 0, 0]} barSize={18} />
+                        <Bar dataKey="actual" name="Actual Delivered (%)" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={18} />
+                        <Bar dataKey="aiAdjusted" name="AI Adjusted Proj (%)" fill="#10b981" radius={[4, 4, 0, 0]} barSize={18} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div className="bg-[#0f1720] rounded-3xl border border-slate-800 p-6">
+                  <p className="text-sm font-black text-white mb-1">Profit Growth Audit</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-4">Past 5 years + forward projection</p>
+                  <div className="h-[320px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={profitAuditData} margin={{ top: 20, right: 0, left: -20, bottom: 0 }} barGap={4}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
+                        <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 12, fontWeight: 700 }} axisLine={{ stroke: "#475569" }} tickLine={false} dy={10} />
+                        <YAxis tick={{ fill: "#94a3b8", fontSize: 12, fontWeight: 700 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                        <RechartsTooltip
+                          cursor={{ fill: "#1e293b", opacity: 0.4 }}
+                          contentStyle={{ backgroundColor: "#0f172a", borderColor: "#334155", borderRadius: "12px", color: "#f8fafc" }}
+                          itemStyle={{ fontWeight: "bold" }}
+                          formatter={(value) => value === null || value === undefined ? "—" : `${Number(value).toFixed(1)}%`}
+                        />
+                        <Bar dataKey="promised" name="Promised (%)" fill="#64748b" radius={[4, 4, 0, 0]} barSize={18} />
+                        <Bar dataKey="actual" name="Actual Delivered (%)" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={18} />
+                        <Bar dataKey="aiAdjusted" name="AI Adjusted Proj (%)" fill="#10b981" radius={[4, 4, 0, 0]} barSize={18} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+
+              {/* Data Ledger Cards (Restyled for clarity) */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 border-t border-slate-700/50 pt-6">
+                {auditLedger.map((item, idx) => (
+                  <div key={idx} className="bg-[#0f172a] border border-slate-700/50 p-4 rounded-2xl flex flex-col">
+                    <div className="text-center border-b border-slate-800 pb-2 mb-3">
+                      <p className="text-xs font-black text-slate-300">{item.year} {item.category || item.metric}</p>
+                      <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Historical Variance</p>
+                    </div>
+                    <div className="flex justify-between items-center text-sm w-full">
+                      <div className="flex flex-col items-start">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">Promised</span>
+                        <span className="text-slate-400 font-bold">{item.promised !== null && item.promised !== undefined ? `${Number(item.promised).toFixed(2)}%` : "—"}</span>
+                      </div>
+                      <span className="text-slate-700">→</span>
+                      <div className="flex flex-col items-end">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">Actual</span>
+                        <span className={`font-black ${(item.actual ?? 0) >= (item.promised ?? 0) ? "text-blue-400" : "text-rose-400"}`}>
+                          {item.actual !== null && item.actual !== undefined ? `${Number(item.actual).toFixed(2)}%` : "—"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+            </div>
+          )}
         </div>
 
       </div>

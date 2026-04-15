@@ -34,27 +34,18 @@ const DISPLAY_NAMES = {
   "LTIM.NS":"LTIM","BAJAJ-AUTO.NS":"BAJAJ-AUTO","SHRIRAMFIN.NS":"SHRIRAMFIN","TRENT.NS":"TRENT",
 };
 
-async function fetchBatch(syms) {
-  const results = {};
-  await Promise.all(
-    syms.map(async (sym) => {
-      try {
-        const url   = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=2d`;
-        const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-        const res   = await fetch(proxy);
-        const outer = await res.json();
-        const meta  = JSON.parse(outer.contents).chart.result[0].meta;
-        const price = meta.regularMarketPrice;
-        const prev  = meta.chartPreviousClose ?? meta.previousClose;
-        const chg   = price - prev;
-        const pct   = (chg / prev) * 100;
-        results[sym] = { price, chg, pct };
-      } catch {
-        results[sym] = null;
-      }
-    })
+async function fetchBatch() {
+  const res = await fetch("http://127.0.0.1:8000/stock/ticker-tape");
+  if (!res.ok) throw new Error("Ticker tape unavailable");
+  const data = await res.json();
+  return Object.fromEntries(
+    data.map((item) => [
+      item.sym,
+      item.price == null
+        ? null
+        : { price: item.price, chg: item.chg, pct: item.pct },
+    ])
   );
-  return results;
 }
 
 export default function TickerBar({ onSymbolClick }) {
@@ -70,16 +61,14 @@ export default function TickerBar({ onSymbolClick }) {
   useEffect(() => {
     let alive = true;
     async function load() {
-      const BATCH = 10;
-      for (let i = 0; i < NIFTY50_STOCKS.length; i += BATCH) {
-        const slice   = NIFTY50_STOCKS.slice(i, i + BATCH);
-        const results = await fetchBatch(slice);
+      try {
+        const results = await fetchBatch();
         if (!alive) return;
         setTickers((prev) =>
-          prev.map((t) =>
-            results[t.sym] ? { ...t, ...results[t.sym] } : t
-          )
+          prev.map((t) => (results[t.sym] ? { ...t, ...results[t.sym] } : t))
         );
+      } catch {
+        if (!alive) return;
       }
     }
     load();

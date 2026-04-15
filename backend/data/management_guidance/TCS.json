@@ -1,0 +1,39 @@
+{
+  "company": "Tata Consultancy Services",
+  "symbol": "TCS",
+  "history": [
+    {
+      "quarter": "Q4 FY24",
+      "statement": "Demand conversion should improve by the second half and support better revenue momentum next quarter.",
+      "metric": "revenue_growth_pct",
+      "direction": "increase",
+      "target_text": "Better near-term revenue momentum",
+      "actual_value": 6.8,
+      "actual_text": "Revenue growth improved modestly in the subsequent quarter.",
+      "delivered": true,
+      "source": "local seed dataset"
+    },
+    {
+      "quarter": "Q1 FY25",
+      "statement": "Margins should hold despite wage revisions.",
+      "metric": "margin_delta_pct",
+      "direction": "maintain",
+      "target_text": "Maintain operating margin",
+      "actual_value": -0.2,
+      "actual_text": "Margins slipped slightly, making the guidance only partially delivered.",
+      "delivered": null,
+      "source": "local seed dataset"
+    },
+    {
+      "quarter": "Q2 FY25",
+      "statement": "Large-deal execution should support stronger book-to-bill conversion in the next quarter.",
+      "metric": "deal_conversion",
+      "direction": "increase",
+      "target_text": "Stronger large-deal conversion",
+      "actual_value": 1.0,
+      "actual_text": "Execution improved and bookings translated into healthier conversion.",
+      "delivered": true,
+      "source": "local seed dataset"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════════════
    Prediction.jsx — FinNet Institutional · Predictive Modeling Engine
    ═══════════════════════════════════════════════════════════════════════ */
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useStock } from "../context/StockContext";
 import { 
   LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, 
@@ -138,12 +138,22 @@ const CustomTooltip = ({ active, payload, label }) => {
    ═══════════════════════════════════════════════════════════════════════ */
 export default function Prediction() {
   const { symbol, priceData } = useStock();
+  const [mcsData, setMcsData] = useState(null);
+  const API_BASE = "http://localhost:8000";
 
-  // THE MATH & PROJECTION ENGINE
+  // 🟢 FETCH THE AI CREDIBILITY SCORE
+  useEffect(() => {
+    if (!symbol) return;
+    fetch(`${API_BASE}/stock/fundamentals/mcs/${symbol}`)
+      .then(res => res.json())
+      .then(data => setMcsData(data))
+      .catch(err => console.error("Failed to fetch MCS:", err));
+  }, [symbol]);
+
+  // THE MATH & PROJECTION ENGINE (Runs Locally to prevent 404s)
   const forecast = useMemo(() => {
     if (!priceData || priceData.length < 30) return null;
 
-    // 🟢 BUG FIX: Clean and strictly parse prices to prevent NaN chart crashes
     const prices = priceData.map(p => Number(p.close)).filter(n => !isNaN(n) && n > 0);
     if (prices.length < 30) return null;
 
@@ -159,15 +169,26 @@ export default function Prediction() {
     const variance = logReturns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / logReturns.length;
     const volatility = Math.sqrt(variance) * Math.sqrt(252); 
 
-    // Projection Function
+    // AI Discount Logic
+    const trustIndex = mcsData?.mcs_score !== undefined ? mcsData.mcs_score : 50; 
+    const discountFactor = trustIndex / 100.0;
+
+    // Projection Functions
     const project = (years, driftMultiplier) => {
       const expectedReturn = driftMultiplier * volatility; 
       const futurePrice = currentPrice * Math.exp(expectedReturn * years);
       return Math.round(futurePrice);
     };
 
-    const projectCAGR = (multiplier) => {
-      const cagr = (multiplier * volatility * 100).toFixed(1);
+    const projectAI = (years, driftMultiplier) => {
+      // Apply the AI credibility haircut to the expected return
+      const expectedReturn = (driftMultiplier * volatility) * discountFactor; 
+      const futurePrice = currentPrice * Math.exp(expectedReturn * years);
+      return Math.round(futurePrice);
+    };
+
+    const projectCAGR = (multiplier, useDiscount = false) => {
+      const cagr = (multiplier * volatility * (useDiscount ? discountFactor : 1) * 100).toFixed(1);
       return cagr > 0 ? `+${cagr}%` : `${cagr}%`;
     };
 
@@ -179,6 +200,7 @@ export default function Prediction() {
             Bull: project(i, 1.0),
             Base: project(i, 0.5),
             Bear: project(i, -0.2),
+            "AI Adjusted": projectAI(i, 0.5) // The Base Case discounted by the CEO's lie factor
         });
     }
 
@@ -215,6 +237,8 @@ export default function Prediction() {
       verdictDesc,
       confidence: Math.min(92, Math.max(45, Math.round(65 + (1/volatility) * 2))), 
       horizon: `FY${currentYear + 1}-${currentYear + 5}`,
+      trustIndex,
+      discountFactor,
       bull: {
         prob: 25,
         prices: [project(1, 1.0).toLocaleString(), project(3, 1.0).toLocaleString(), project(5, 1.0).toLocaleString()], 
@@ -229,9 +253,12 @@ export default function Prediction() {
         prob: 20,
         prices: [project(1, -0.2).toLocaleString(), project(3, -0.2).toLocaleString(), project(5, -0.2).toLocaleString()], 
         cagr: projectCAGR(-0.2)
+      },
+      aiAdjustedBase: {
+        cagr: projectCAGR(0.5, true)
       }
     };
-  }, [priceData]);
+  }, [priceData, mcsData]);
 
   // Loading / Empty States
   if (!symbol) return (
@@ -285,14 +312,13 @@ export default function Prediction() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 animate-in slide-in-from-bottom-8 duration-700 fade-in space-y-8">
 
-        {/* ── FAN CHART (VISUALIZING PROJECTIONS) ── */}
+        {/* ── FAN CHART WITH AI ADJUSTMENT ── */}
         <div className="bg-white rounded-3xl shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-slate-200 p-6 sm:p-8 flex flex-col">
             <h2 className="text-xl font-black text-slate-900 tracking-tight mb-6 flex justify-between items-center">
               5-Year Trajectory Fan Chart
               <span className="text-[10px] font-bold uppercase text-slate-400 tracking-widest bg-slate-100 px-3 py-1 rounded-lg">Base Price: ₹{forecast.currentPrice.toLocaleString()}</span>
             </h2>
             
-            {/* 🟢 BUG FIX: Replaced flex-1 with a strict absolute height to prevent Recharts from collapsing to 0px */}
             <div style={{ width: '100%', height: 400 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={forecast.chartData} margin={{ top: 20, right: 30, left: 10, bottom: 0 }}>
@@ -306,14 +332,32 @@ export default function Prediction() {
                   <Line type="monotone" dataKey="Bull" stroke="#10b981" strokeWidth={3} dot={{r: 4, fill: '#10b981', strokeWidth: 0}} activeDot={{r: 7, strokeWidth: 0}} />
                   <Line type="monotone" dataKey="Base" stroke="#3b82f6" strokeWidth={3} dot={{r: 4, fill: '#3b82f6', strokeWidth: 0}} activeDot={{r: 7, strokeWidth: 0}} />
                   <Line type="monotone" dataKey="Bear" stroke="#f43f5e" strokeWidth={3} dot={{r: 4, fill: '#f43f5e', strokeWidth: 0}} activeDot={{r: 7, strokeWidth: 0}} />
+                  
+                  {/* 🟢 THE NEW AI ADJUSTED LINE */}
+                  <Line type="monotone" dataKey="AI Adjusted" stroke="#8b5cf6" strokeWidth={3} strokeDasharray="5 5" dot={{r: 4, fill: '#8b5cf6', strokeWidth: 0}} activeDot={{r: 7, strokeWidth: 0}} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
 
-            <div className="flex justify-center gap-8 mt-6 pt-5 border-t border-slate-100">
+            <div className="flex justify-center gap-6 mt-6 pt-5 border-t border-slate-100 flex-wrap">
               <span className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase tracking-widest"><div className="w-3 h-3 rounded-full bg-emerald-500"></div> Bull Scenario</span>
-              <span className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase tracking-widest"><div className="w-3 h-3 rounded-full bg-blue-500"></div> Base Scenario</span>
+              <span className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase tracking-widest"><div className="w-3 h-3 rounded-full bg-blue-500"></div> Base Claimed</span>
               <span className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase tracking-widest"><div className="w-3 h-3 rounded-full bg-rose-500"></div> Bear Scenario</span>
+              <span className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase tracking-widest"><div className="w-3 h-3 rounded-full bg-purple-500"></div> AI Adjusted Base</span>
+            </div>
+
+            {/* AI Notification Box */}
+            <div className="bg-purple-50 border border-purple-100 p-4 rounded-xl mt-6 flex flex-col md:flex-row gap-4 items-center justify-between">
+              <div>
+                <h4 className="text-sm font-bold text-purple-900 uppercase tracking-widest">AI Credibility Haircut Applied</h4>
+                <p className="text-xs text-purple-700 mt-1">
+                  The <span className="font-bold">Purple Dashed Line</span> represents the Base Case discounted by the CEO's historical Trust Index ({forecast.trustIndex}%).
+                </p>
+              </div>
+              <div className="bg-white px-4 py-2 rounded-lg border border-purple-100 text-center shrink-0">
+                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">AI Adjusted CAGR</span>
+                <span className="text-purple-600 font-black">{forecast.aiAdjustedBase.cagr}</span>
+              </div>
             </div>
         </div>
 
@@ -391,9 +435,7 @@ export default function Prediction() {
             <div className="lg:col-span-2 flex flex-col justify-center">
               <h3 className="text-sm font-bold text-white mb-4 uppercase tracking-widest border-b border-slate-700/50 pb-2">Executive Summary</h3>
               <p className="text-slate-300 text-sm leading-relaxed mb-6 font-medium">
-                The asset is currently trading within a defined volatility regime. Our stochastic models indicate an 
-                <span className="text-white font-black"> 80% probability</span> of positive returns over the evaluated horizon.
-                Structural drivers remain intact.
+                The asset is currently trading within a defined volatility regime. Our stochastic models indicate an 80% probability of positive returns over the evaluated horizon. Structural drivers remain intact.
               </p>
               <div className="flex gap-8">
                 <div className="bg-slate-800/50 px-4 py-3 rounded-xl border border-slate-700">
@@ -407,15 +449,7 @@ export default function Prediction() {
               </div>
             </div>
 
-            {/* Right: Action Button */}
-            <div className="lg:col-span-1 flex flex-col justify-center items-start lg:items-end border-t lg:border-t-0 lg:border-l border-slate-700 pt-6 lg:pt-0 pl-0 lg:pl-6">
-               <button className="bg-white text-slate-900 px-6 py-4 rounded-xl font-black text-sm uppercase tracking-wider hover:bg-slate-100 transition-colors w-full shadow-[0_0_20px_rgba(255,255,255,0.1)] flex items-center justify-center gap-2">
-                 <Download size={18}/> Export PDF
-               </button>
-               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mt-4 text-center lg:text-right w-full flex items-center justify-center lg:justify-end gap-1">
-                 <Lock size={12}/> Model v3.1
-               </p>
-            </div>
+            
 
           </div>
         </div>

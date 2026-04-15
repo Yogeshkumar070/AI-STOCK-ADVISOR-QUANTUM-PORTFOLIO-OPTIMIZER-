@@ -1,0 +1,39 @@
+{
+  "company": "Reliance Industries",
+  "symbol": "RELIANCE",
+  "history": [
+    {
+      "quarter": "Q4 FY24",
+      "statement": "Consumer businesses should keep delivering double-digit growth into the next quarter.",
+      "metric": "revenue_growth_pct",
+      "direction": "increase",
+      "target_text": "Sustain double-digit revenue growth",
+      "actual_value": 11.2,
+      "actual_text": "Reported consumer-facing revenue growth remained above 10% in the following quarter.",
+      "delivered": true,
+      "source": "local seed dataset"
+    },
+    {
+      "quarter": "Q1 FY25",
+      "statement": "Refining margins should improve sequentially as the operating environment normalizes.",
+      "metric": "margin_delta_pct",
+      "direction": "improve",
+      "target_text": "Sequential margin improvement",
+      "actual_value": -0.6,
+      "actual_text": "Refining margin compressed sequentially instead of improving.",
+      "delivered": false,
+      "source": "local seed dataset"
+    },
+    {
+      "quarter": "Q2 FY25",
+      "statement": "Telecom subscriber monetization should remain steady through the next reporting period.",
+      "metric": "arpu_delta_pct",
+      "direction": "maintain",
+      "target_text": "Stable subscriber monetization",
+      "actual_value": 0.4,
+      "actual_text": "ARPU improved modestly, supporting the guidance.",
+      "delivered": true,
+      "source": "local seed dataset"
+    }
+  ]
+}

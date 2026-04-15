@@ -76,7 +76,7 @@ const TreemapCell = (props) => {
         style={{ pointerEvents: 'none' }}
       />
       {/* Ticker Symbol */}
-      {width > 50 && height > 40 && (
+      if (width > 50 && height > 40) {
         <text 
           x={x + width / 2} y={y + height / 2 - 4} 
           textAnchor="middle" fill="#ffffff" 
@@ -86,9 +86,9 @@ const TreemapCell = (props) => {
         >
           {name}
         </text>
-      )}
+      }
       {/* Allocation % (Prominent & Clean) */}
-      {width > 60 && height > 55 && (
+      if (width > 60 && height > 55) {
         <text 
           x={x + width / 2} y={y + height / 2 + 18} 
           textAnchor="middle" fill="rgba(255,255,255,0.9)" 
@@ -98,7 +98,7 @@ const TreemapCell = (props) => {
         >
           {alloc.toFixed(1)}%
         </text>
-      )}
+      }
     </g>
   );
 };
@@ -148,9 +148,23 @@ export default function Quantum() {
       const res = await fetch("http://127.0.0.1:8000/quantum/optimize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tickers: selectedStocks, risk_tolerance: 0.5 })
+        body: JSON.stringify({
+          tickers: selectedStocks,
+          symbols: selectedStocks,
+          risk_tolerance: 0.5,
+          max_assets: Math.min(5, selectedStocks.length),
+        })
       });
-      if (!res.ok) throw new Error("Backend optimization failed");
+      if (!res.ok) {
+        let message = "Backend optimization failed";
+        try {
+          const err = await res.json();
+          message = err.detail || message;
+        } catch {
+          // ignore malformed error bodies
+        }
+        throw new Error(message);
+      }
       const data = await res.json();
       setResult(data);
     } catch (err) {
@@ -270,7 +284,8 @@ export default function Quantum() {
   };
 
   return (
-    <div className="min-h-screen bg-[#020617] pb-20 font-sans selection:bg-amber-500/30">
+    // 🟢 THE FULL-BLEED HACK: Forces the dark background to escape the parent container's white padding
+    <div className="w-screen min-h-[calc(100vh-60px)] bg-[#020617] pb-20 font-sans selection:bg-amber-500/30 relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] -mt-6 overflow-x-hidden">
       
       {/* ── HIGH-TECH HEADER WITH YELLOW QUANTUM GRID ── */}
       <div className="text-white pt-16 pb-24 px-8 relative border-b border-slate-800" style={quantumGridStyle}>
@@ -319,7 +334,7 @@ export default function Quantum() {
                   <Search className="absolute left-4 top-3.5 text-slate-500 group-focus-within:text-amber-400 transition-colors" size={18} />
                   <input 
                     type="text" placeholder="Search Nifty 50 tickers..."
-                    className="w-full pl-11 pr-4 py-3 bg-[#1e293b] text-white text-sm font-bold border border-slate-700 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all placeholder-slate-500 shadow-inner"
+                    className="w-full pl-11 pr-4 py-2.5 bg-[#1e293b] text-white text-sm font-bold border border-slate-700 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all placeholder-slate-500 shadow-inner"
                     value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
@@ -334,7 +349,8 @@ export default function Quantum() {
                 {filteredStocks.length === 0 ? (
                    <div className="text-center py-10 text-slate-500 text-sm font-bold">No assets match your search.</div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-3">
+                  // 🟢 THE FIX: Tightened the grid gap and completely restyled the buttons to look sleek
+                  <div className="grid grid-cols-2 gap-2">
                     {filteredStocks.map(stock => {
                       const isSelected = selectedStocks.includes(stock);
                       return (
@@ -342,15 +358,15 @@ export default function Quantum() {
                           key={stock}
                           onClick={() => toggleStock(stock)}
                           disabled={!isSelected && selectedStocks.length >= 15}
-                          className={`relative flex items-center justify-between px-4 py-3.5 text-xs font-black rounded-xl transition-all duration-300
+                          className={`relative flex items-center justify-between px-3 py-2 text-[11px] font-bold rounded-lg transition-all duration-200 border
                             ${isSelected 
-                              ? "bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-900 border border-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.5)] transform scale-[1.03]" 
-                              : "bg-[#1e293b] text-slate-400 border border-slate-700 hover:border-amber-500/50 hover:text-amber-400 shadow-sm"}
-                            ${!isSelected && selectedStocks.length >= 15 ? "opacity-30 cursor-not-allowed hover:border-slate-700 hover:text-slate-400" : ""}
+                              ? "bg-amber-500/10 text-amber-400 border-amber-500/50 shadow-[0_0_10px_rgba(245,158,11,0.2)]" 
+                              : "bg-slate-900/50 text-slate-400 border-slate-800 hover:border-slate-600 hover:bg-slate-800/50 hover:text-slate-300"}
+                            ${!isSelected && selectedStocks.length >= 15 ? "opacity-30 cursor-not-allowed" : ""}
                           `}
                         >
                           {stock}
-                          {isSelected && <Check size={16} strokeWidth={3} className="text-slate-900 drop-shadow-sm" />}
+                          {isSelected && <Check size={14} strokeWidth={3} className="text-amber-400" />}
                         </button>
                       );
                     })}
@@ -377,7 +393,7 @@ export default function Quantum() {
           </div>
 
           {/* ── RIGHT PANEL: DASHBOARD RESULTS ── */}
-          <div className="xl:col-span-8 space-y-8">
+          <div className="xl:col-span-8 min-w-0 space-y-8">
             {result ? (
               <div className="animate-in fade-in slide-in-from-bottom-8 duration-700">
                 
